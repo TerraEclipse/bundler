@@ -1,14 +1,12 @@
 {
-  "name": "bundler",
-  "version": "1.0.0",
-  "description": "",
+  "name": "@terraeclipse/bundler",
+  "version": "0.0.0",
+  "description": "construct an app using a set of re-usable code bundles",
   "main": "lib/index.js",
   "scripts": {
     "build": "./node_modules/.bin/babel src -d lib",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "",
-  "license": "ISC",
   "devDependencies": {
     "babel-cli": "^6.7.7",
     "babel-polyfill": "^6.7.4",
