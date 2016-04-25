@@ -6,42 +6,63 @@ export default function bundler (bundle) {
     _pathCache: {},
     _valCache: {},
     parsePath: (p, bundle) => {
-      let alterMatch = p.match(/^@(.*)(\[(\-?\d*)\])?$/)
+      let alterMatch = p.match(/^@(?:(.+):)?(.*)(\[(\-?\d*)\])?$/)
       if (alterMatch) {
         return {
-          pointer: alterMatch[1],
+          ns: alterMatch[1] || bundle._ns,
+          pointer: alterMatch[2],
           op: 'alter',
-          weight: alterMatch[2] ? parseInt(alterMatch[2], 10) : 0,
+          weight: alterMatch[3] ? parseInt(alterMatch[3], 10) : 0,
           value: bundle[p],
-          bundle: bundle
+          bundle: bundle,
+          get: (p) => {
+            return app.get(p, bundle._ns)
+          }
         }
       }
-      let pushMatch = p.match(/^(.*)\[(\-?\d*)\]$/)
+      let pushMatch = p.match(/^(?:(.+):)?(.*)\[(\-?\d*)\]$/)
       if (pushMatch) {
         return {
-          pointer: pushMatch[1],
+          ns: pushMatch[1] || bundle._ns,
+          pointer: pushMatch[2],
           op: 'push',
-          weight: pushMatch[2] ? parseInt(pushMatch[2], 10) : 0,
+          weight: pushMatch[3] ? parseInt(pushMatch[3], 10) : 0,
           value: bundle[p],
-          bundle: bundle
+          bundle: bundle,
+          get: (p) => {
+            return app.get(p, bundle._ns)
+          }
         }
       }
-      let mergeMatch = p.match(/^(.*)\{(\-?\d*)\}$/)
+      let mergeMatch = p.match(/^(?:(.+):)?(.*)\{(\-?\d*)\}$/)
       if (mergeMatch) {
         return {
-          pointer: mergeMatch[1],
+          ns: mergeMatch[1] || bundle._ns,
+          pointer: mergeMatch[2],
           op: 'merge',
-          weight: mergeMatch[2] ? parseInt(mergeMatch[2], 10) : 0,
+          weight: mergeMatch[3] ? parseInt(mergeMatch[3], 10) : 0,
           value: bundle[p],
-          bundle: bundle
+          bundle: bundle,
+          get: (p) => {
+            return app.get(p, bundle._ns)
+          }
         }
       }
       if (p.charAt(0) === '_') return null
+      let setMatch = p.match(/^(?:(.+):)?(.*)$/)
+      if (!setMatch) {
+        let err = new Error('invalid path `' + p + '`')
+        throw err
+      }
       return {
-        pointer: p,
+        ns: setMatch[1] || bundle._ns,
+        pointer: setMatch[2],
         op: 'set',
         value: bundle[p],
-        bundle: bundle
+        bundle: bundle,
+        get: (p) => {
+          return app.get(p, bundle._ns)
+        }
       }
     },
     parseBundle: (bundle) => {
@@ -58,37 +79,14 @@ export default function bundler (bundle) {
       })
     },
     addPathCache: (parsed) => {
-      if (typeof app._pathCache[parsed.pointer] === 'undefined') {
-        app._pathCache[parsed.pointer] = []
+      let p = parsed.ns ? parsed.ns + ':' + parsed.pointer : parsed.pointer
+      if (typeof app._pathCache[p] === 'undefined') {
+        app._pathCache[p] = []
       }
-      app._pathCache[parsed.pointer].push(parsed)
+      app._pathCache[p].push(parsed)
     },
     getPathCache: (p) => {
-      let paths = app._pathCache[p]
-      if (!paths) return []
-      // order paths by op
-      paths.sort(function (a, b) {
-        if ((a.op === 'push' && b.op === 'merge') || (b.op === 'push' && a.op === 'merge')) {
-          let err = new Error('cannot push and merge to same path')
-          err.a = a
-          err.b = b
-          throw err
-        }
-        if (a.op === 'set' && b.op === 'set') {
-          let err = new Error('cannot set path twice')
-          err.a = a
-          err.b = b
-          throw err
-        }
-        if (a.op === 'set' && b.op !== 'set') return -1
-        if (b.op === 'set' && a.op !== 'set') return 1
-        if (a.op === 'alter' && b.op !== 'alter') return 1
-        if (b.op === 'alter' && a.op !== 'alter') return -1
-        if (a.weight < b.weight) return -1
-        if (b.weight < a.weight) return 1
-        return 0
-      })
-      return paths
+      return app._pathCache[p] || []
     },
     resetCache: () => {
       app._pathCache = {}
@@ -100,22 +98,26 @@ export default function bundler (bundle) {
     getValCache: (p) => {
       return app._valCache[p]
     },
-    get: (p) => {
+    get: (p, defaultNs) => {
+      if (defaultNs && p.indexOf(':') === -1) {
+        p = defaultNs + ':' + p
+      }
+
       let cached = app.getValCache(p)
       if (typeof cached !== 'undefined') {
         return cached
       }
       let paths = app.getPathCache(p)
       if (!paths.length) {
-        let err = new Error('path not exported')
+        let err = new Error('path `' + p + '` is undefined')
         err.path = p
         throw err
       }
       let val = null
       paths.forEach((path) => {
-        let tmp = app.evalContainer(path.value)
+        let tmp = app.getValue(path)
         if (typeof tmp === 'undefined') {
-          let err = new Error('undefined export')
+          let err = new Error('undefined value for `' + p + '`')
           err.path = path
           throw err
         }
@@ -125,12 +127,12 @@ export default function bundler (bundle) {
             break
           case 'push':
             if (!val) val = []
-            val.push(tmp)
+            val = val.concat(tmp)
             break
           case 'merge':
             if (!val) val = {}
             if (toString.call(val) !== '[object Object]' || toString.call(tmp) !== '[object Object]') {
-              let err = new Error('cannot merge non-object-literal')
+              let err = new Error('cannot merge non-object-literal `' + p + '`')
               err.val = val
               err.tmp = tmp
               err.path = path
@@ -139,7 +141,7 @@ export default function bundler (bundle) {
             val = merge(val, tmp)
             break
           case 'alter':
-            if (typeof tmp === 'function') {
+            if (typeof tmp === 'function' && tmp.name === 'alter') {
               val = tmp.call(app, val)
             }
             else val = tmp
@@ -149,14 +151,88 @@ export default function bundler (bundle) {
       app.addValCache(p, val)
       return val
     },
-    evalContainer: (orig) => {
-      return typeof orig === 'function' && orig.name === 'container'
-        ? orig.call(app, app.get)
-        : orig
+    getValue: (path) => {
+      let pointerValue = app.isPointer(path.value)
+      if (pointerValue) {
+        return path.get(pointerValue)
+      }
+      return typeof path.value === 'function' && path.value.name === 'container'
+        ? path.value.call(app, path.get)
+        : path.value
+    },
+    validatePathCache: () => {
+      Object.keys(app._pathCache).forEach((p) => {
+        let hasSet = false
+        let hasMerge = false
+        let hasPush = false
+        let hasAlter = false
+        let paths = app._pathCache[p]
+        // order paths by op
+        paths.sort(function (a, b) {
+          if (a.op === 'set' && b.op !== 'set') return -1
+          if (b.op === 'set' && a.op !== 'set') return 1
+          if (a.op === 'alter' && b.op !== 'alter') return 1
+          if (b.op === 'alter' && a.op !== 'alter') return -1
+          if (a.weight < b.weight) return -1
+          if (b.weight < a.weight) return 1
+          return 0
+        })
+        paths.forEach((path) => {
+          switch (path.op) {
+            case 'set':
+              if (hasSet) {
+                let err = new Error('cannot set path twice `' + p + '`')
+                err.path = p
+                err.paths = app._pathCache[p]
+                throw err
+              }
+              hasSet = true
+              break
+            case 'push':
+              if (hasMerge) {
+                let err = new Error('cannot push and merge to same path `' + p + '`')
+                err.path = p
+                err.paths = app._pathCache[p]
+                throw err
+              }
+              hasPush = true
+              break
+            case 'merge':
+              if (hasPush) {
+                let err = new Error('cannot push and merge to same path `' + p + '`')
+                err.path = p
+                err.paths = app._pathCache[p]
+                throw err
+              }
+              hasMerge = true
+              break
+            case 'alter':
+              hasAlter = true
+              break
+          }
+          let pointerValue = app.isPointer(path.value)
+          if (pointerValue && typeof app._pathCache[pointerValue] === 'undefined') {
+            let err = new Error('cannot point to undefined path `' + pointerValue + '`')
+            err.path = p
+            err.paths = app._pathCache[p]
+            err.pointer = pointerValue
+            throw err
+          }
+        })
+        if (hasAlter && !(hasSet || hasMerge || hasPush)) {
+          let err = new Error('cannot alter undefined path `' + p + '`')
+        }
+      })
+    },
+    isPointer: (val) => {
+      if (typeof val !== 'string') return false
+      let pointerMatch = val.match(/^#(.*)$/)
+      return pointerMatch ? pointerMatch[1] : false
     }
   }
 
   app.parseBundle(bundle)
+  app.validatePathCache()
 
   return app
 }
