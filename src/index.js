@@ -6,13 +6,13 @@ export default function bundler (bundle) {
     _pathCache: {},
     _valCache: {},
     parsePath: (p, bundle) => {
-      let alterMatch = p.match(/^@(?:(.+):)?(.*)(\[(\-?\d*)\])?$/)
+      let alterMatch = p.match(/^@(?:(.+):)?([^\[]+)(\[(\-?\d*)\])?$/)
       if (alterMatch) {
         return {
           ns: alterMatch[1] || bundle._ns,
           pointer: alterMatch[2],
           op: 'alter',
-          weight: alterMatch[3] ? parseInt(alterMatch[3], 10) : 0,
+          weight: alterMatch[3] ? parseInt(alterMatch[3].replace(/\[|\]/g, ''), 10) : 0,
           value: bundle[p],
           bundle: bundle,
           get: (p) => {
@@ -20,13 +20,13 @@ export default function bundler (bundle) {
           }
         }
       }
-      let pushMatch = p.match(/^(?:(.+):)?(.*)\[(\-?\d*)\]$/)
+      let pushMatch = p.match(/^(?:(.+):)?([^\[]+)\[(\-?\d*)\]$/)
       if (pushMatch) {
         return {
           ns: pushMatch[1] || bundle._ns,
           pointer: pushMatch[2],
           op: 'push',
-          weight: pushMatch[3] ? parseInt(pushMatch[3], 10) : 0,
+          weight: pushMatch[3] ? parseInt(pushMatch[3].replace(/\[|\]/g, ''), 10) : 0,
           value: bundle[p],
           bundle: bundle,
           get: (p) => {
@@ -34,13 +34,13 @@ export default function bundler (bundle) {
           }
         }
       }
-      let mergeMatch = p.match(/^(?:(.+):)?(.*)\{(\-?\d*)\}$/)
+      let mergeMatch = p.match(/^(?:(.+):)?([^\{]+)\{(\-?\d*)\}$/)
       if (mergeMatch) {
         return {
           ns: mergeMatch[1] || bundle._ns,
           pointer: mergeMatch[2],
           op: 'merge',
-          weight: mergeMatch[3] ? parseInt(mergeMatch[3], 10) : 0,
+          weight: mergeMatch[3] ? parseInt(mergeMatch[3].replace(/\{|\}/g, ''), 10) : 0,
           value: bundle[p],
           bundle: bundle,
           get: (p) => {
@@ -99,6 +99,7 @@ export default function bundler (bundle) {
       return app._valCache[p]
     },
     get: (p, defaultNs) => {
+      if (!defaultNs) defaultNs = bundle._ns
       if (defaultNs && p.indexOf(':') === -1) {
         p = defaultNs + ':' + p
       }
@@ -178,6 +179,11 @@ export default function bundler (bundle) {
           return 0
         })
         paths.forEach((path) => {
+          if (typeof path.value === 'undefined') {
+            let err = new Error('undefined value for `' + p + '`')
+            err.path = path
+            throw err
+          }
           switch (path.op) {
             case 'set':
               if (hasSet) {
@@ -221,6 +227,9 @@ export default function bundler (bundle) {
         })
         if (hasAlter && !(hasSet || hasMerge || hasPush)) {
           let err = new Error('cannot alter undefined path `' + p + '`')
+          err.path = p
+          err.paths = app._pathCache[p]
+          throw err
         }
       })
     },
