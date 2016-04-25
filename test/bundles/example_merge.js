@@ -24,11 +24,3 @@ module.exports = {
     'b': 3
   }
 }
-
-a: 1
-c: 10
-b: 4
-d: {
-  e: 'h'
-  g: true
-}
