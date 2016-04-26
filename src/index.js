@@ -1,10 +1,14 @@
 import 'babel-polyfill'
 import merge from 'n-deep-merge'
 
+function PlainObject() {}
+PlainObject.prototype = Object.create(null);
+
 export default function bundler (bundle) {
   let app = {
-    _pathCache: {},
-    _valCache: {},
+    plainObject: () => {
+      return new PlainObject()
+    },
     parsePath: (p, bundle) => {
       let alterMatch = p.match(/^@(?:(.+):)?([^\[]+)(\[(\-?\d*)\])?$/)
       if (alterMatch) {
@@ -89,8 +93,8 @@ export default function bundler (bundle) {
       return app._pathCache[p] || []
     },
     resetCache: () => {
-      app._pathCache = {}
-      app._valCache = {}
+      app._pathCache = app.plainObject()
+      app._valCache = app.plainObject()
     },
     addValCache: (p, val) => {
       app._valCache[p] = val
@@ -138,7 +142,7 @@ export default function bundler (bundle) {
             val = val.concat(tmp)
             break
           case 'merge':
-            if (!val) val = {}
+            if (!val) val = app.plainObject()
             if (toString.call(val) !== '[object Object]' || toString.call(tmp) !== '[object Object]') {
               let err = new Error('cannot merge non-object-literal `' + p + '`')
               err.val = val
@@ -246,7 +250,7 @@ export default function bundler (bundle) {
       return pointerMatch ? pointerMatch[1] : false
     },
     export: function () {
-      let ret = {}
+      let ret = app.plainObject()
       let pathStrings = []
       Object.keys(bundle).forEach((k) => {
         let path = app.parsePath(k, bundle)
@@ -266,7 +270,7 @@ export default function bundler (bundle) {
         let parts = p.split('.')
         let current = ret
         parts.forEach((part, idx) => {
-          if (typeof current[part] === 'undefined') current[part] = {}
+          if (typeof current[part] === 'undefined') current[part] = app.plainObject()
           if (idx == parts.length - 1) {
             current[part] = app.get(p)
           }
@@ -279,6 +283,7 @@ export default function bundler (bundle) {
     }
   }
 
+  app.resetCache()
   app.parseBundle(bundle)
   app.validatePathCache()
 
