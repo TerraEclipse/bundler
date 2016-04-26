@@ -244,6 +244,38 @@ export default function bundler (bundle) {
       if (typeof val !== 'string') return false
       let pointerMatch = val.match(/^#(.*)$/)
       return pointerMatch ? pointerMatch[1] : false
+    },
+    export: function () {
+      let ret = {}
+      let pathStrings = []
+      Object.keys(bundle).forEach((k) => {
+        let path = app.parsePath(k, bundle)
+        if (path && (!path.ns || path.ns === bundle._ns)) {
+          let p = path.ns ? path.ns + ':' + path.pointer : path.pointer
+          if (pathStrings.indexOf(p) === -1) {
+            pathStrings.push(p)
+          }
+        }
+      })
+      pathStrings.sort((a, b) => {
+        if (a.length < b.length) return -1
+        if (a.length > b.length) return 1
+        return 0
+      })
+      pathStrings.forEach((p) => {
+        let parts = p.split('.')
+        let current = ret
+        parts.forEach((part, idx) => {
+          if (typeof current[part] === 'undefined') current[part] = {}
+          if (idx == parts.length - 1) {
+            current[part] = app.get(p)
+          }
+          else {
+            current = current[part]
+          }
+        })
+      })
+      return ret
     }
   }
 

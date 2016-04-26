@@ -44,6 +44,21 @@ describe('examples', function () {
     assert.equal(nestedVal, 'some-value altered altered!');
     var peerVal = app.get('something-else-nested:get.from.peer');
     assert.equal(peerVal, 'some-value altered altered!');
+    var exported = app.export();
+    assert.deepEqual(exported, {
+      top: {
+        level: {
+          path: 'top-level-value'
+        }
+      },
+      imports: {
+        yet: {
+          another: {
+            path: val
+          }
+        }
+      }
+    });
   });
   it('pointer', function () {
     var app = bundler(require('./bundles/example_pointer'));
