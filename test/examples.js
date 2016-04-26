@@ -42,6 +42,8 @@ describe('examples', function () {
     assert.equal(topLevelVal, 'top-level-value');
     var nestedVal = app.get('something-nested:some.path');
     assert.equal(nestedVal, 'some-value altered altered!');
+    var peerVal = app.get('something-else-nested:get.from.peer');
+    assert.equal(peerVal, 'some-value altered altered!');
   });
   it('pointer', function () {
     var app = bundler(require('./bundles/example_pointer'));
