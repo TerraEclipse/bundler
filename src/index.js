@@ -128,6 +128,13 @@ export default function bundler (bundle) {
             break
           case 'push':
             if (!val) val = []
+            if (toString.call(val) !== '[object Array]') {
+              let err = new Error('cannot push to non-array `' + p + '`')
+              err.val = val
+              err.tmp = tmp
+              err.path = path
+              throw err
+            }
             val = val.concat(tmp)
             break
           case 'merge':

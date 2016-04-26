@@ -40,6 +40,12 @@ describe('errors', function () {
       var app = bundler(require('./bundles/error_push_merge'));
     }, /cannot push and merge to same path `some.thing`/);
   });
+  it('get push non-array', function () {
+    assert.throws(function () {
+      var app = bundler(require('./bundles/error_push_non_array'));
+      app.get('some.thing');
+    }, /cannot push to non-array `some.thing`/);
+  });
   it('set path twice', function () {
     assert.throws(function () {
       var app = bundler(require('./bundles/error_set_path_twice'));
